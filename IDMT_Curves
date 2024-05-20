@@ -1,0 +1,209 @@
+import numpy as np
+import plotly.graph_objects as go
+
+# IEC Standard curve constants
+IEC_CURVES = {
+    'iec_a': (0.14, 0.02),
+    'iec_b': (13.5, 1),
+    'iec_c': (80, 2)
+}
+
+def plot_oc_curves(curve_parameters, fault_level, device1=None, device2=None):
+    fig = go.Figure()
+    I_pu = np.linspace(1.1, 20, 500)  # Per unit current
+
+    annotations = []
+    fault_line_range = [float('inf'), float('-inf')]
+
+    for params in curve_parameters:
+        device_name = params.get('device_name', 'Device')
+        pickup_current_it = params.get('pickup_current_it')
+        curve_type = params.get('curve_type')
+        tms = params.get('tms')
+        pickup_current_inst = params.get('pickup_current_inst')
+        inst_delay = params.get('inst_delay')
+        pickup_current_deft = params.get('pickup_current_deft')
+        def_delay = params.get('def_delay')
+
+        if pickup_current_it and curve_type and tms:
+            if curve_type in IEC_CURVES:
+                K, alpha = IEC_CURVES[curve_type]
+                oc_it_time = tms * K / (I_pu**alpha - 1)
+
+                if pickup_current_inst and inst_delay:
+                    transition_index = np.searchsorted(I_pu, pickup_current_inst / pickup_current_it)
+
+                    combined_current = list(I_pu[:transition_index] * pickup_current_it)
+                    combined_current.append(pickup_current_inst)
+                    combined_current.extend(I_pu[transition_index:] * pickup_current_it)
+
+                    combined_time = list(oc_it_time[:transition_index])
+                    combined_time.append(inst_delay)
+                    combined_time.extend([inst_delay] * (len(I_pu) - transition_index))
+
+                    fig.add_trace(go.Scatter(x=combined_current, y=combined_time,
+                                             mode='lines', name=f'{device_name} - Combined IT and Inst'))
+
+                    fault_index = np.searchsorted(combined_current, fault_level)
+                    if fault_index < len(combined_time):
+                        fault_time = combined_time[fault_index]
+                        annotations.append(dict(
+                            x=fault_level,
+                            y=fault_time,
+                            xref="x",
+                            yref="y",
+                            text=f'{device_name}: {fault_time:.2f}s',
+                            showarrow=True,
+                            arrowhead=7,
+                            ax=0,
+                            ay=-40
+                        ))
+
+                elif pickup_current_deft and def_delay:
+                    transition_index = np.searchsorted(I_pu, pickup_current_deft / pickup_current_it)
+
+                    combined_current = list(I_pu[:transition_index] * pickup_current_it)
+                    combined_current.append(pickup_current_deft)
+                    combined_current.extend(I_pu[transition_index:] * pickup_current_it)
+
+                    combined_time = list(oc_it_time[:transition_index])
+                    combined_time.append(def_delay)
+                    combined_time.extend([def_delay] * (len(I_pu) - transition_index))
+
+                    fig.add_trace(go.Scatter(x=combined_current, y=combined_time,
+                                             mode='lines', name=f'{device_name} - Combined IT and DefT'))
+
+                    fault_index = np.searchsorted(combined_current, fault_level)
+                    if fault_index < len(combined_time):
+                        fault_time = combined_time[fault_index]
+                        annotations.append(dict(
+                            x=fault_level,
+                            y=fault_time,
+                            xref="x",
+                            yref="y",
+                            text=f'{device_name}: {fault_time:.2f}s',
+                            showarrow=True,
+                            arrowhead=7,
+                            ax=0,
+                            ay=-40
+                        ))
+
+                else:
+                    fig.add_trace(go.Scatter(x=I_pu * pickup_current_it, y=oc_it_time,
+                                             mode='lines', name=f'{device_name} - Inverse Time (OC IT)'))
+
+                    fault_index = np.searchsorted(I_pu * pickup_current_it, fault_level)
+                    if fault_index < len(oc_it_time):
+                        fault_time = oc_it_time[fault_index]
+                        annotations.append(dict(
+                            x=fault_level,
+                            y=fault_time,
+                            xref="x",
+                            yref="y",
+                            text=f'{device_name}: {fault_time:.2f}s',
+                            showarrow=True,
+                            arrowhead=7,
+                            ax=0,
+                            ay=-40
+                        ))
+
+        if pickup_current_inst and inst_delay and not (pickup_current_it and curve_type and tms):
+            fig.add_trace(go.Scatter(
+                x=[pickup_current_inst, pickup_current_inst], 
+                y=[inst_delay, 20], 
+                mode='lines', 
+                name=f'{device_name} - Instantaneous (OC Inst)', 
+                line=dict(color='red')
+            ))
+            fig.add_trace(go.Scatter(
+                x=[pickup_current_inst, 20 * pickup_current_inst], 
+                y=[inst_delay, inst_delay], 
+                mode='lines', 
+                showlegend=False, 
+                line=dict(color='red')
+            ))
+
+            if fault_level >= pickup_current_inst:
+                fault_time = inst_delay
+                annotations.append(dict(
+                    x=fault_level,
+                    y=fault_time,
+                    xref="x",
+                    yref="y",
+                    text=f'{device_name}: {fault_time:.2f}s',
+                    showarrow=True,
+                    arrowhead=7,
+                    ax=0,
+                    ay=-40
+                ))
+
+        if pickup_current_deft and def_delay and not (pickup_current_it and curve_type and tms):
+            fig.add_trace(go.Scatter(
+                x=[pickup_current_deft, pickup_current_deft], 
+                y=[def_delay, 20], 
+                mode='lines', 
+                name=f'{device_name} - Definite Time (OC DefT)', 
+                line=dict(color='blue')
+            ))
+            fig.add_trace(go.Scatter(
+                x=[pickup_current_deft, 20 * pickup_current_deft], 
+                y=[def_delay, def_delay], 
+                mode='lines', 
+                showlegend=False, 
+                line=dict(color='blue')
+            ))
+
+            if fault_level >= pickup_current_deft:
+                fault_time = def_delay
+                annotations.append(dict(
+                    x=fault_level,
+                    y=fault_time,
+                    xref="x",
+                    yref="y",
+                    text=f'{device_name}: {fault_time:.2f}s',
+                    showarrow=True,
+                    arrowhead=7,
+                    ax=0,
+                    ay=-40
+                ))
+
+        if device_name == device1 or device_name == device2:
+            if pickup_current_it:
+                fault_line_range[0] = min(fault_line_range[0], pickup_current_it)
+                fault_line_range[1] = max(fault_line_range[1], pickup_current_it)
+
+    if fault_line_range[0] < float('inf') and fault_line_range[1] > float('-inf'):
+        fig.add_trace(go.Scatter(
+            x=[fault_level, fault_level], y=[0.01, 10],
+            mode="lines", name="Fault Level",
+            line=dict(color="red", dash="dash")
+        ))
+
+    fig.update_layout(
+        title='Overcurrent Protection Curves',
+        xaxis_title='Current (A)',
+        yaxis_title='Time (s)',
+        yaxis_type='log',
+        xaxis_type='log',
+        xaxis=dict(
+            showline=True, linewidth=2, linecolor='black', mirror=True,
+            minor=dict(showgrid=True),
+            ticks="outside",
+            tickformat='d',
+            tickangle=45  # Rotate tick labels to prevent overlap
+        ),
+        yaxis=dict(
+            showline=True, linewidth=2, linecolor='black', mirror=True,
+            minor=dict(showgrid=True),
+            ticks="outside",
+            tickformat='.2f'
+        ),
+        showlegend=True,
+        legend=dict(x=1.05, y=1, bordercolor="Black", borderwidth=1),
+        template='plotly_white',
+        annotations=annotations
+    )
+
+    fig.show()
+
+
