@@ -1,0 +1,27 @@
+# Example usage:
+curve_parameters = [
+    {
+        'device_name': 'Relay 1',
+        'pickup_current_it': 100, 'curve_type': 'iec_b', 'tms': 0.1,
+        'pickup_current_inst': 600, 'inst_delay': 0.01
+    },
+    {
+        'device_name': 'Relay 2',
+        'pickup_current_it': 100, 'curve_type': 'iec_a', 'tms': 0.1,
+        'pickup_current_deft': 500, 'def_delay': 0.2
+    },
+    {
+        'device_name': 'Relay 3',
+        'pickup_current_inst': 700, 'inst_delay': 0.05
+    },
+    {
+        'device_name': 'Relay 4',
+        'pickup_current_deft': 400, 'def_delay': 0.15
+    }
+]
+
+fault_level = 800
+device1 = 'Relay 1'
+device2 = 'Relay 2'
+
+plot_oc_curves(curve_parameters, fault_level, device1, device2)
